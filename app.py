@@ -1,6 +1,7 @@
 import string, random
 from flask import Flask, render_template, request, redirect
 from models import db, URL
+from flask import jsonify
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///urls.db'
@@ -37,3 +38,37 @@ def home():
 def redirect_short_url(short_code):
     url = URL.query.filter_by(short_code=short_code).first_or_404()
     return redirect(url.original_url)
+
+
+@app.route('/api/shorten', methods=['POST'])
+def api_shorten():
+    data = request.get_json()
+    if not data or 'url' not in data:
+        print("📩 API endpoint hit")
+
+        return jsonify({'error': 'Missing URL in request'}), 400
+
+    original_url = data['url']
+    short_code = generate_short_code()
+
+    while URL.query.filter_by(short_code=short_code).first():
+        short_code = generate_short_code()
+
+    new_url = URL(original_url=original_url, short_code=short_code)
+    db.session.add(new_url)
+    db.session.commit()
+
+    return jsonify({
+        'original_url': original_url,
+        'short_url': request.host_url + short_code
+    }), 201
+
+@app.route('/api/<short_code>', methods=['GET'])
+def api_redirect(short_code):
+    url = URL.query.filter_by(short_code=short_code).first()
+    if url:
+        return jsonify({'original_url': url.original_url}), 200
+    else:
+        return jsonify({'error': 'Short code not found'}), 404
+
+
